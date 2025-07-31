@@ -17,8 +17,13 @@ openai.api_version = "2023-05-15"
 DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT")
 CHUNK_DIR = "processed_chunks/"
 
-# Set up Chroma client and collection
-client = chromadb.Client(Settings(anonymized_telemetry=False))
+# ✅ Use persistent Chroma path (for Azure App Service)
+CHROMA_PATH = "/home/site/data/chroma_db"
+# ✅ Ensure the folder exists
+os.makedirs(CHROMA_PATH, exist_ok=True)
+
+# ✅ Set up Persistent Chroma client and collection
+client = PersistentClient(path=CHROMA_PATH, settings=Settings(anonymized_telemetry=False))
 collection = client.get_or_create_collection("rag_chunks")
 
 def generate_embeddings_chroma():
