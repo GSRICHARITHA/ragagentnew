@@ -1,44 +1,61 @@
-import openai
 import os
+import openai
 import numpy as np
-from .embedder import EMBEDDINGS_INDEX
-from dotenv import load_dotenv 
+from dotenv import load_dotenv
+import chromadb
+from chromadb.config import Settings
 
 load_dotenv()
 
+# Azure OpenAI config
 openai.api_type = "azure"
 openai.api_key = os.getenv("AZURE_OPENAI_KEY")
 openai.api_base = os.getenv("AZURE_OPENAI_ENDPOINT")
-openai.api_version = "2023-05-15"  # Or current
+openai.api_version = "2023-05-15"
 
 EMBED_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT")
 CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+# Set up Chroma client
+client = chromadb.Client(Settings(anonymized_telemetry=False))
+collection = client.get_or_create_collection("rag_chunks")
 
 def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 def answer_query(query: str):
-    if not EMBEDDINGS_INDEX:
-        return {"error": "No embeddings found. Run /embed first."}
+    try:
+        # Step 1: Generate embedding for the query
+        response = openai.Embedding.create(
+            input=query,
+            deployment_id=EMBED_DEPLOYMENT
+        )
+        query_embedding = response["data"][0]["embedding"]
 
-    query_embedding = openai.Embedding.create(
-        input=query,
-        deployment_id=EMBED_DEPLOYMENT
-    )["data"][0]["embedding"]
+        # Step 2: Search top 3 similar documents from ChromaDB
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=3
+        )
 
-    similarities = [
-        (cosine_similarity(query_embedding, doc["embedding"]), doc["text"])
-        for doc in EMBEDDINGS_INDEX.values()
-    ]
+        documents = results["documents"][0] if results["documents"] else []
 
-    top_chunks = sorted(similarities, reverse=True)[:3]
-    context = "\n\n".join([t[1] for t in top_chunks])
+        if not documents:
+            return {"response": "No relevant documents found."}
 
-    prompt = f"Answer the question based on the context below:\n\nContext:\n{context}\n\nQuestion: {query}"
+        # Step 3: Compose prompt
+        context = "\n\n".join(documents)
+        prompt = f"Answer the question based on the context below:\n\nContext:\n{context}\n\nQuestion: {query}"
 
-    response = openai.ChatCompletion.create(
-        deployment_id=CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}]
-    )
+        # Step 4: Query Azure OpenAI
+        chat_response = openai.ChatCompletion.create(
+            deployment_id=CHAT_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-    return {"response": response["choices"][0]["message"]["content"]}
+        return {
+            "response": chat_response["choices"][0]["message"]["content"]
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
