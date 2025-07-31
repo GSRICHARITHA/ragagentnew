@@ -4,6 +4,7 @@ import numpy as np
 from dotenv import load_dotenv
 import chromadb
 from chromadb.config import Settings
+from chromadb import PersistentClient
 
 load_dotenv()
 
@@ -16,8 +17,14 @@ openai.api_version = "2023-05-15"
 EMBED_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT")
 CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 
-# Set up Chroma client
-client = chromadb.Client(Settings(anonymized_telemetry=False))
+# ✅ Persistent ChromaDB path (adjust for local or Azure)
+CHROMA_PATH = "/home/site/data/chroma_db"  # for Azure
+
+# ✅ Ensure chroma path exists
+os.makedirs(CHROMA_PATH, exist_ok=True)
+
+# ✅ Set up persistent Chroma client
+client = PersistentClient(path=CHROMA_PATH, settings=Settings(anonymized_telemetry=False))
 collection = client.get_or_create_collection("rag_chunks")
 
 def cosine_similarity(a, b):
