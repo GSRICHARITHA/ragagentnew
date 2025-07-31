@@ -13,7 +13,7 @@ def process_files():
 
 @app.post("/embed")
 def embed_chunks():
-    return embedder.generate_embeddings()
+    return embedder.generate_embeddings_chroma()
 
 @app.post("/response")
 def generate_response(query: str = Form(...)):
